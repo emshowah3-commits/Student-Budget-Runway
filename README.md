@@ -21,8 +21,8 @@ A student has rent due on the 25th and payday on the 28th. Their balance looks f
 ## Run it locally
 
 ```
-git clone (https://github.com/emshowah3-commits/Student-Budget-Runway.git)
-cd https://github.com/emshowah3-commits/Student-Budget-Runway.git
+git clone https://github.com/emshowah3-commits/Student-Budget-Runway.git
+cd Student-Budget-Runway
 pip install -r requirements.txt
 streamlit run app.py
 ```
