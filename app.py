@@ -9,7 +9,7 @@ from src.runway import assess_all, describe, fix_text, prepare_ledger
 st.set_page_config(page_title="Student Budget Runway", page_icon=" ", layout="wide")
 
 
-# APP CODE
+# ---- small helpers so the app works on older and newer Streamlit versions
 def show_df(frame):
     try:
         st.dataframe(frame, width="stretch")
@@ -31,7 +31,7 @@ def banner(kind, text):
 
 
 st.title("Student Budget Runway Predictor")
-st.markdown("**Veritas AI Hackathon MVP:** AI-powered transaction categorization and a pre-payday runway warning, "
+st.markdown("AI-powered transaction categorization and a pre-payday runway warning, "
             "tested on synthetic data.")
 
 # 1. Load model pipeline
@@ -70,10 +70,12 @@ if uploaded_file is not None:
         st.error("The uploaded file has no columns or data to parse.")
         st.stop()
 else:
-    default_path = "sample_transactions.csv"
-    if os.path.exists(default_path):
+    default_path = next((p for p in ("data/demo/demo_student.csv", "sample_transactions.csv")
+                         if os.path.exists(p)), None)
+    if default_path:
         df = pd.read_csv(default_path)
-        st.sidebar.info("Loaded default demo data. Upload your own CSV above to test a custom ledger.")
+        st.sidebar.info(f"Loaded default demo data ({os.path.basename(default_path)}). "
+                        "Upload your own CSV above to test a custom ledger.")
     else:
         st.warning("Please upload a transaction CSV file in the sidebar to begin.")
         st.stop()
@@ -82,7 +84,7 @@ if pd.to_datetime(df["date"], errors="coerce").isna().all():
     st.error("None of the values in the `date` column could be read as dates (try YYYY-MM-DD).")
     st.stop()
 
-# 3. Categorize every transaction, then run the forecast for every student
+# 3. Categorize every transaction
 descriptions = df["description"].astype(str)
 df["pred_label"] = clf.predict(descriptions)
 try:
@@ -95,35 +97,76 @@ if ledger.empty:
     st.error("No usable rows: check the `date` and `amount` columns.")
     st.stop()
 threshold = threshold_pct / 100
-assessments = assess_all(ledger, buffer=buffer, threshold=threshold, fallback_days=int(fallback_days))
-flagged = sum(a.status == "warning" for a in assessments)
+
+# label corrections made by the user live in session state and are reset when a new file is loaded
+data_sig = (getattr(uploaded_file, "name", "demo"), len(df))
+if st.session_state.get("data_sig") != data_sig:
+    st.session_state["data_sig"] = data_sig
+    st.session_state["label_overrides"] = {}
+overrides = st.session_state["label_overrides"]
+for idx, label in overrides.items():
+    if idx in ledger.index:
+        ledger.at[idx, "pred_label"] = label
 
 # 4. Main dashboard layout
 tab_app, tab_eval, tab_info = st.tabs(["Live Dashboard", "Evaluation & Metrics", "How it works"])
 
 with tab_app:
     st.subheader("Transaction Categorization & Runway Analysis")
-
-    low_conf = int((ledger["confidence"] < 0.5).sum()) if "confidence" in ledger.columns else None
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Total Transactions", len(ledger))
-    c2.metric("Unique Students", ledger["user_id"].nunique())
-    c3.metric("Students with a runway warning", flagged)
-    c4.metric("Low-confidence labels", "n/a" if low_conf is None else low_conf)
+    metrics_box = st.container()          # filled in below, once the forecast has run
 
     st.write("### Classified Transactions Preview")
-    preview = ledger.copy()
-    preview["date"] = preview["date"].dt.strftime("%Y-%m-%d")
-    cols = ["date", "description", "amount", "pred_label"] + (["confidence"] if "confidence" in preview.columns else [])
-    show_df(preview[cols].head(10))
-    if low_conf:
-        st.caption(f"{low_conf} rows were labelled with under 50% confidence. Check those before trusting the forecast.")
+    preview_box = st.container()
 
-    # pick a student
-    ids = [a.user_id for a in assessments]
+    ids = sorted(ledger["user_id"].unique())
     student = st.selectbox("Student", ids) if len(ids) > 1 else ids[0]
+
+    # Optional human review: fix a wrong category and the forecast updates straight away
+    try:
+        has_conf = "confidence" in ledger.columns
+        options = sorted(set(getattr(clf, "classes_", [])) | set(ledger["pred_label"]))
+        view_cols = ["date", "description", "amount", "pred_label"] + (["confidence"] if has_conf else [])
+        view = (ledger[ledger["user_id"] == student]
+                .sort_values("confidence" if has_conf else "date")
+                .head(30)[view_cols].copy())
+        view["date"] = view["date"].dt.strftime("%Y-%m-%d")
+        with st.expander("Review and correct labels (optional, lowest-confidence rows first)"):
+            st.caption("Pick the right category for any row the model got wrong. Fixed bills and flexible spending "
+                       "are split by category, so a correction can change the forecast.")
+            edited = st.data_editor(
+                view, key=f"label_editor_{student}",
+                disabled=[c for c in view_cols if c != "pred_label"],
+                column_config={"pred_label": st.column_config.SelectboxColumn("pred_label", options=options)},
+            )
+            for idx in edited.index[edited["pred_label"] != view["pred_label"]]:
+                overrides[int(idx)] = edited.at[idx, "pred_label"]
+                ledger.at[idx, "pred_label"] = edited.at[idx, "pred_label"]
+            if overrides:
+                st.caption(f"{len(overrides)} label(s) corrected by you in this session.")
+    except Exception as exc:
+        st.caption(f"Label review is unavailable in this Streamlit version ({type(exc).__name__}).")
+
+    # Forecast for every student, using the (possibly corrected) labels
+    assessments = assess_all(ledger, buffer=buffer, threshold=threshold, fallback_days=int(fallback_days))
+    flagged = sum(a.status == "warning" for a in assessments)
     a = next(x for x in assessments if x.user_id == student)
     g = ledger[ledger["user_id"] == student]
+
+    low_conf = int((ledger["confidence"] < 50).sum()) if "confidence" in ledger.columns else None
+    with metrics_box:
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Total Transactions", len(ledger))
+        c2.metric("Unique Students", ledger["user_id"].nunique())
+        c3.metric("Students with a runway warning", flagged)
+        c4.metric("Low-confidence labels", "n/a" if low_conf is None else low_conf)
+
+    with preview_box:
+        preview = ledger.copy()
+        preview["date"] = preview["date"].dt.strftime("%Y-%m-%d")
+        cols = ["date", "description", "amount", "pred_label"] + (["confidence"] if "confidence" in preview.columns else [])
+        show_df(preview[cols].head(10))
+        if low_conf:
+            st.caption(f"{low_conf} rows were labelled with under 50% confidence. Check those before trusting the forecast.")
 
     st.write("### Where the money goes")
     spend = g[(g["amount"] < 0) & (g["pred_label"] != "Income")]
@@ -168,12 +211,15 @@ with tab_app:
 
     st.write("### All students")
     summary = pd.DataFrame([x.summary_row() for x in assessments])
-    show_df(summary.sort_values("chance of running out", ascending=False, na_position="last"))
+    summary = summary.sort_values("chance of running out", ascending=False, na_position="last")
+    show_df(summary)
+    st.download_button("Download student summary (CSV)", summary.to_csv(index=False),
+                       "runway_summary.csv", "text/csv")
 
     if "runs_out_within_3d_pre_payday" in df.columns:
         n_flag = int((df["runs_out_within_3d_pre_payday"] == 1).sum())
         st.caption(f"The uploaded file also contains {n_flag} rows pre-labelled as at risk. "
-                    "They are not used by this forecast.")
+                   "They are not used by this forecast.")
 
 with tab_eval:
     st.subheader("Model Performance vs. Naive Baseline")
