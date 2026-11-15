@@ -1,58 +1,101 @@
-# Student Budget Runway
+# Runway: Student Budget Runway
 
-**Track**: AI + Finance | **Status**: Prototype (Educational, not financial advice)
+**Track:** AI + Finance | **Status:** educational prototype, not financial advice | **Data:** synthetic only
 
-## Research Question
-Can a simple trained classifier (TF-IDF + Logistic Regression) accurately categorize a student's messy bank transactions, and can a category-aware forecast warn a student at least 3 days before they run out of money before payday, outperforming a naive "spend-as-usual" baseline?
+Runway sorts a student's messy bank lines with a trained classifier, then uses a category-aware Monte Carlo forecast to warn them at least 3 days before they would run out of money before payday. It was tested against a "spend as usual" rule on synthetic data.
 
----
+## The problem
 
-## Solution Overview
-1. **Transaction Categorization**: Cleans and classifies raw bank transaction descriptions into 15 spending categories using TF-IDF vectorization and a Logistic Regression classifier.
-2. **Deterministic Runway Simulation**: Separates fixed recurring bills (rent, utilities, subscriptions, insurance) from flexible discretionary spending.
-3. **Pre-Payday Warning Engine**: Runs probabilistic Monte Carlo simulations to estimate the exact risk of running out of money before payday and computes the "smallest fix" (minimal flexible spending cut) needed to avoid overdraft.
+A student has rent due on the 25th and payday on the 28th. Their balance looks fine today, but in between it hits zero. Most budgeting tools show where money went. Runway shows whether the money will last until payday, early enough to do something about it.
 
----
+## What it does
 
-## Datasets & Credits
-- **Data Calibration**: Synthetic Canadian student banking dataset calibrated to official Canadian institutional benchmarks:
-  * Statistics Canada (Survey of Household Spending [SHS], Food Services and Drinking Places Survey [FSDSP], Labour Force Survey [LFS])
-  * Canada Mortgage and Housing Corporation (CMHC - Rental Market Report)
-  * Financial Consumer Agency of Canada (FCAC)
-  * Payments Canada
-  * Canadian Institute for Health Information (CIHI)
-- **Libraries**: `scikit-learn`, `pandas`, `numpy`, `streamlit`, `joblib`
-- **AI & Collaboration Tools**: Built with Python and assisted by LLM tooling (Claude & Gemini) for code structuring and documentation review, alongside custom Canadian, UK, and Indian messy test transaction benchmarks.
+1. **Sorts the bank lines.** A TF-IDF + logistic regression model labels each transaction (Groceries, Housing, Restaurants, Utilities, and so on, 15 categories).
+2. **Splits spending into fixed bills and flexible spending.** Housing, utilities, insurance, subscriptions, education and fees are treated as fixed bills. This step is plain code, not AI.
+3. **Looks ahead to payday.** It projects the balance day by day, runs 1,000 simulated futures drawn from the student's own recent spending, and reports:
+   - the chance of running out before payday
+   - a safe-to-spend amount per day
+   - the "smallest fix": the smallest cut to flexible spending that brings the risk under the chosen level
+4. **Lets the user correct labels.** If the classifier gets a line wrong, fixing the category updates the forecast straight away.
 
----
+## Run it locally
+
+```
+git clone <this repository's URL>
+cd <repository folder>
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+- The app needs `models/categorizer.joblib`. It is included in the repo. To recreate it, run `notebooks/01_categorization.ipynb`.
+- With no upload, the app loads the synthetic demo students in `data/demo/demo_student.csv`. Select `sam` to see a warning.
+- To use your own file, upload a CSV with the columns `date`, `description` and `amount`. The columns `user_id`, `running_balance` and `days_to_payday` are optional.
+- The notebooks run top to bottom with Restart and Run All.
+
+## Repository layout
+
+```
+app.py                      Streamlit app
+src/runway.py               forecasting code: fixed vs flexible spending, simulation, safe-to-spend, smallest fix
+models/categorizer.joblib   trained sorting model
+notebooks/                  01_categorization (sorting), 02_forecast (warning evaluation)
+data/demo/                  synthetic demo students
+data/labeled/               my 160 hand-labelled messy test lines
+results/                    result tables and charts
+docs/                       write-up and sources
+```
 
 ## Definitions
-- **Run Out**: Account balance falls below the safety buffer before the next payday.
-- **Early Warning**: Triggered at least 3 days prior to an anticipated overdraft event.
-- **Sorting Baseline**: Always predicting the most common category in the dataset.
-- **Forecast Baseline ("Spend as Usual")**: Projecting future balances using simple 30-day moving-average daily spending without separating fixed bills.
 
----
+- **Run out:** the balance falls below the safety buffer before the next payday.
+- **Early warning:** raised at least 3 days before the projected run-out.
+- **Sorting baseline:** always predict the most common category.
+- **Forecast baseline ("spend as usual"):** project the balance using the 30-day average daily spending, without separating fixed bills from flexible spending.
 
-## Evaluation & Results
-- **Transaction Sorting**: 
-  * Baseline ("always guess most common"): **35.2% accuracy**
-  * TF-IDF + Logistic Regression (30% test split): **99.7% accuracy** (Macro-F1: **99.5%**)
-  * TF-IDF + Logistic Regression (Custom messy test lines): **100.0% accuracy**
-- **Early-Warning Forecast**: 
-  * Tested on **522 evaluation days** across **28 synthetic Canadian student ledgers** with **34 actual run-out cases**.
-  * **Category-Aware Forecast**: Flagged 35 students; correct 30 times (**Precision: 0.86, Recall: 0.88**).
-  * **Spend-as-Usual Baseline**: Flagged 65 students; correct 31 times (**Precision: 0.48, Recall: 0.91**).
-  * *Note: With a limited number of actual run-out cases in the synthetic test set, these results serve as an encouraging prototype proof-of-concept rather than clinical proof.*
+## Data and credits
 
----
+- **Training and test ledgers:** synthetic Canadian student ledgers (`canadian_student_bank_forecasting_dataset.csv`). [FILL: say exactly how they were generated (your script or the AI tool used) and whether you have a license.] Spending levels were informed by rough public benchmarks from Statistics Canada, CMHC, FCAC, Payments Canada and CIHI. No data was taken directly from those sources.
+- **My own test set:** 160 messy bank lines in Canadian, UK, Indian and US formats, drafted with Claude's help and reviewed and labelled by me.
+- **Libraries:** scikit-learn, pandas, NumPy, Streamlit, joblib.
+- **AI tools:** Claude (planning, writing and debugging code, drafting the test lines) and Gemini (code structure review). I reviewed everything and can explain every part.
 
-## Installation & Running Locally
+## Results
 
-1. **Clone the repository**:
-   ```bash
-   git clone [https://github.com/emshowah3-commits/student-budget-runway.git](https://github.com/emshowah3-commits/student-budget-runway.git)
-   cd student-budget-runway
+All results come from synthetic data, so read them as a prototype check, not proof.
 
-   ## Disclaimer:
-   Runway is a prototype built for the Veritas AI Hackathon and is for educational/demonstration purposes only. It does not constitute professional financial advice.
+**Sorting bank lines**
+
+| Test | Accuracy |
+|---|---|
+| Always guess the most common category | 35.2% |
+| TF-IDF + logistic regression, 30% split of the training ledgers | 99.7% (macro-F1 99.5%). This is inflated, because the generated ledgers repeat the same templates. |
+| TF-IDF + logistic regression, my 160 messy lines | [FILL: accuracy on the lines that do not appear in the training data, with the number of lines] |
+
+**Early-warning forecast** (522 evaluation days, 21 actual run-out cases)
+
+| Model | Precision | Recall | F1 |
+|---|---|---|---|
+| Spend as usual | 0.280 | 0.667 | 0.394 |
+| Category-aware (Runway) | 0.471 | 0.762 | 0.582 |
+
+
+With only 21 real cases, the gap is encouraging but not conclusive. The forecast and the data generator share assumptions about fixed and flexible spending, so real bank data could give lower scores.
+
+## Where it fails
+
+- **Mislabelled student purchases.** A campus bookstore line can be labelled Restaurants, a ride home Housing, and a campus café Groceries. Because fixed bills and flexible spending are split by category, these errors flow into the forecast. The in-app label review exists for this.
+- **False alarms and misses.** A short dip right after rent can trigger a warning even though the student recovers, and a spending spike in the last two days before payday can be missed.
+- **Irregular income.** Co-op terms and one-off e-transfers make payday timing hard to infer, so the app falls back to a payday you enter.
+- **Fixed bills are guessed** from repeated payments, so a one-off or changed bill can be missed.
+
+## Privacy
+
+When you run the app on your own machine, parsing, classification and simulation happen locally in memory. The demo uses only synthetic data. Please don't upload real bank statements to a copy of this app hosted on someone else's server.
+
+## Out of scope
+
+Live bank linking, multi-account workflows, multi-currency support, and automatic actions such as pausing subscriptions.
+
+## Disclaimer
+
+Runway is an educational prototype built for a hackathon. It is not financial advice.
