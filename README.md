@@ -53,3 +53,6 @@ Can a simple trained classifier (TF-IDF + Logistic Regression) accurately catego
    ```bash
    git clone [https://github.com/emshowah3-commits/student-budget-runway.git](https://github.com/emshowah3-commits/student-budget-runway.git)
    cd student-budget-runway
+
+   ## Disclaimer:
+   Runway is a prototype built for the Veritas AI Hackathon and is for educational/demonstration purposes only. It does not constitute professional financial advice.
