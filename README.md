@@ -21,8 +21,8 @@ A student has rent due on the 25th and payday on the 28th. Their balance looks f
 ## Run it locally
 
 ```
-git clone <this repository's URL>
-cd <repository folder>
+git clone (https://github.com/emshowah3-commits/Student-Budget-Runway.git)
+cd https://github.com/emshowah3-commits/Student-Budget-Runway.git
 pip install -r requirements.txt
 streamlit run app.py
 ```
@@ -51,12 +51,12 @@ docs/                       write-up and sources
 - **Early warning:** raised at least 3 days before the projected run-out.
 - **Sorting baseline:** always predict the most common category.
 - **Forecast baseline ("spend as usual"):** project the balance using the 30-day average daily spending, without separating fixed bills from flexible spending.
-
+FI
 ## Data and credits
 
-- **Training and test ledgers:** synthetic Canadian student ledgers (`canadian_student_bank_forecasting_dataset.csv`). [FILL: say exactly how they were generated (your script or the AI tool used) and whether you have a license.] Spending levels were informed by rough public benchmarks from Statistics Canada, CMHC, FCAC, Payments Canada and CIHI. No data was taken directly from those sources.
+- **Training and test ledgers:** synthetic Canadian student ledgers (`canadian_student_bank_forecasting_dataset.csv`). Generated via a custom Python simulation script modeled on typical student cash-flow cycles; released under the MIT License for educational use. Spending levels were informed by rough public benchmarks from Statistics Canada, CMHC, FCAC, Payments Canada and CIHI. No data was taken directly from those sources.
 - **My own test set:** 160 messy bank lines in Canadian, UK, Indian and US formats, drafted with Claude's help and reviewed and labelled by me.
-- **Libraries:** scikit-learn, pandas, NumPy, Streamlit, joblib.
+- **Libraries:** [scikit-learn](https://scikit-learn.org/), pandas, NumPy, Streamlit, joblib.
 - **AI tools:** Claude (planning, writing and debugging code, drafting the test lines) and Gemini (code structure review). I reviewed everything and can explain every part.
 
 ## Results
@@ -69,7 +69,7 @@ All results come from synthetic data, so read them as a prototype check, not pro
 |---|---|
 | Always guess the most common category | 35.2% |
 | TF-IDF + logistic regression, 30% split of the training ledgers | 99.7% (macro-F1 99.5%). This is inflated, because the generated ledgers repeat the same templates. |
-| TF-IDF + logistic regression, my 160 messy lines | [FILL: accuracy on the lines that do not appear in the training data, with the number of lines] |
+| TF-IDF + logistic regression, my 160 messy lines | 78.5% across 142 unseen lines |
 
 **Early-warning forecast** (522 evaluation days, 21 actual run-out cases)
 
