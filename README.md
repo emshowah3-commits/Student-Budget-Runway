@@ -1,4 +1,4 @@
-# Student Budget Runway (working title)
+# Student Budget Runway 
 
 **Track**: AI + Finance. Prototype only, not financial advice.
 
